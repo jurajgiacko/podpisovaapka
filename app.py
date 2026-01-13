@@ -251,10 +251,28 @@ with st.sidebar:
 
         # Page selector
         if num_pages > 1:
+            # Quick page buttons
+            col_first, col_last = st.columns(2)
+            with col_first:
+                if st.button("⏮️ Prvá", use_container_width=True):
+                    st.session_state.current_page = 0
+            with col_last:
+                if st.button("⏭️ Posledná", use_container_width=True):
+                    st.session_state.current_page = num_pages - 1
+            
+            # Default to last page if not set
+            if 'current_page' not in st.session_state:
+                st.session_state.current_page = num_pages - 1
+            
+            # Ensure current_page is within bounds
+            if st.session_state.current_page >= num_pages:
+                st.session_state.current_page = num_pages - 1
+            
             st.session_state.current_page = st.selectbox(
                 "Vyber stranu na podpis",
                 range(num_pages),
-                format_func=lambda x: f"Strana {x + 1}"
+                index=st.session_state.current_page,
+                format_func=lambda x: f"Strana {x + 1} z {num_pages}"
             )
 
     st.divider()
