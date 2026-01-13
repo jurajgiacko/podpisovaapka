@@ -375,10 +375,47 @@ if not st.session_state.pdf_uploaded:
         """, unsafe_allow_html=True)
 
 else:
-    col1, col2 = st.columns([2, 1])
+    # First, get position controls in sidebar or top
+    pos_x = 50
+    pos_y = 80
+    
+    if st.session_state.signature_created:
+        st.markdown("### 📍 Pozícia podpisu")
+        col_pos1, col_pos2, col_pos3 = st.columns([1, 1, 1])
+        
+        with col_pos1:
+            pos_x = st.slider(
+                "↔️ Horizontálne (%)",
+                min_value=0,
+                max_value=100,
+                value=50,
+                help="0% = vľavo, 100% = vpravo"
+            )
+        
+        with col_pos2:
+            pos_y = st.slider(
+                "↕️ Vertikálne (%)",
+                min_value=0,
+                max_value=100,
+                value=85,
+                help="0% = hore, 100% = dole"
+            )
+        
+        with col_pos3:
+            st.session_state.signature_width = st.slider(
+                "📏 Veľkosť (px)",
+                min_value=50,
+                max_value=400,
+                value=st.session_state.signature_width,
+                step=10
+            )
+        
+        st.divider()
+
+    col1, col2 = st.columns([3, 1])
 
     with col1:
-        st.subheader("📄 Náhľad dokumentu")
+        st.subheader("📄 Náhľad dokumentu s podpisom")
 
         # Convert PDF page to image
         pdf_bytes = st.session_state.pdf_file.getvalue()
@@ -394,7 +431,7 @@ else:
 
         # Convert to PIL Image
         img_data = pix.tobytes("png")
-        pdf_image = Image.open(io.BytesIO(img_data))
+        pdf_image = Image.open(io.BytesIO(img_data)).convert('RGBA')
         
         # Store dimensions
         pdf_page_width = float(page.rect.width)
@@ -404,40 +441,48 @@ else:
 
         pdf_document.close()
 
-        # Display PDF
-        st.image(pdf_image, use_container_width=True)
-        
-        st.markdown("""
-        <div class="info-box">
-            <p>💡 Použi slidery nižšie na umiestnenie podpisu</p>
-        </div>
-        """, unsafe_allow_html=True)
+        # Create preview with signature overlay
+        if st.session_state.signature_created and st.session_state.signature_image:
+            # Create a copy for preview
+            preview_image = pdf_image.copy()
+            
+            # Resize signature for preview
+            sig_img = st.session_state.signature_image.copy()
+            sig_width = st.session_state.signature_width
+            aspect_ratio = sig_img.height / sig_img.width
+            sig_height = int(sig_width * aspect_ratio)
+            
+            # Scale signature for display (PDF is zoomed)
+            display_sig_width = int(sig_width * zoom)
+            display_sig_height = int(sig_height * zoom)
+            sig_resized = sig_img.resize((display_sig_width, display_sig_height), Image.LANCZOS)
+            
+            # Calculate position on preview image
+            x = int((pos_x / 100) * display_width - display_sig_width / 2)
+            y = int((pos_y / 100) * display_height - display_sig_height / 2)
+            
+            # Clamp to bounds
+            x = max(0, min(x, display_width - display_sig_width))
+            y = max(0, min(y, display_height - display_sig_height))
+            
+            # Paste signature onto preview
+            preview_image.paste(sig_resized, (x, y), sig_resized)
+            
+            # Display preview with signature
+            st.image(preview_image, use_container_width=True)
+            
+            st.success("✅ Podpis je umiestnený - použi slidery hore na úpravu pozície")
+        else:
+            # Display PDF without signature
+            st.image(pdf_image, use_container_width=True)
+            st.warning("⚠️ Najprv vyber podpis v bočnom paneli")
 
     with col2:
-        st.subheader("📍 Pozícia podpisu")
+        st.subheader("📥 Export")
         
         if st.session_state.signature_created:
             # Show signature preview
-            st.image(st.session_state.signature_image, caption=f"Veľkosť: {st.session_state.signature_width}px", width=min(st.session_state.signature_width, 250))
-            
-            st.divider()
-            
-            # Position sliders (as percentage of page)
-            pos_x = st.slider(
-                "Horizontálna pozícia (%)",
-                min_value=0,
-                max_value=100,
-                value=50,
-                help="0% = ľavý okraj, 100% = pravý okraj"
-            )
-            
-            pos_y = st.slider(
-                "Vertikálna pozícia (%)",
-                min_value=0,
-                max_value=100,
-                value=80,
-                help="0% = horný okraj, 100% = dolný okraj"
-            )
+            st.image(st.session_state.signature_image, caption="Vybraný podpis", width=150)
             
             st.divider()
 
@@ -445,7 +490,7 @@ else:
             original_filename = st.session_state.pdf_file.name
             signed_filename = get_signed_filename(original_filename)
             
-            st.caption(f"📄 Výstupný súbor: **{signed_filename}**")
+            st.caption(f"📄 **{signed_filename}**")
             
             if st.button("✍️ Vytvoriť podpísané PDF", type="primary", use_container_width=True):
                 try:
