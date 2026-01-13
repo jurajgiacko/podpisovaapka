@@ -37,9 +37,6 @@ env/
 .DS_Store
 Thumbs.db
 
-# Streamlit
-.streamlit/
-
 # Temporary files
 *.tmp
 *.temp
