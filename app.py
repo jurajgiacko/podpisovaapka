@@ -5,10 +5,8 @@ from pypdf import PdfReader, PdfWriter
 from reportlab.pdfgen import canvas
 from reportlab.lib.pagesizes import letter
 import fitz  # PyMuPDF
-from streamlit_drawable_canvas import st_canvas
 import tempfile
 from pathlib import Path
-import json
 from datetime import datetime
 import base64
 
@@ -135,12 +133,6 @@ st.markdown("""
         font-size: 1.1rem;
     }
     
-    .sidebar .stRadio > div {
-        background: var(--bg-secondary);
-        border-radius: 12px;
-        padding: 0.5rem;
-    }
-    
     .stSlider > div > div {
         background: var(--accent-primary);
     }
@@ -194,11 +186,6 @@ st.markdown("""
         padding: 2rem 0;
         font-family: 'JetBrains Mono', monospace;
     }
-    
-    .footer a {
-        color: var(--accent-primary);
-        text-decoration: none;
-    }
 </style>
 """, unsafe_allow_html=True)
 
@@ -206,15 +193,7 @@ st.markdown("""
 SIGNATURES_DIR = Path(__file__).parent / "saved_signatures"
 SIGNATURES_DIR.mkdir(exist_ok=True)
 
-# Helper functions for signature management
-def save_signature(sig_img, name):
-    """Save signature to file"""
-    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-    filename = f"{name}_{timestamp}.png"
-    filepath = SIGNATURES_DIR / filename
-    sig_img.save(filepath, 'PNG')
-    return filepath
-
+# Helper functions
 def load_saved_signatures():
     """Load list of saved signatures"""
     signatures = list(SIGNATURES_DIR.glob("*.png"))
@@ -237,14 +216,8 @@ if 'signature_image' not in st.session_state:
     st.session_state.signature_image = None
 if 'current_page' not in st.session_state:
     st.session_state.current_page = 0
-if 'signature_color' not in st.session_state:
-    st.session_state.signature_color = "#1A237E"
 if 'signature_width' not in st.session_state:
     st.session_state.signature_width = 150
-if 'signature_x' not in st.session_state:
-    st.session_state.signature_x = None
-if 'signature_y' not in st.session_state:
-    st.session_state.signature_y = None
 
 # Header
 st.markdown("""
@@ -263,22 +236,18 @@ with st.sidebar:
     </div>
     """, unsafe_allow_html=True)
     
-    uploaded_file = st.file_uploader("", type=['pdf'], label_visibility="collapsed")
+    uploaded_file = st.file_uploader("Vyber PDF súbor", type=['pdf'], label_visibility="collapsed")
 
     if uploaded_file is not None:
         st.session_state.pdf_file = uploaded_file
         st.session_state.pdf_uploaded = True
-        
+
         # Get number of pages
         pdf_reader = PdfReader(uploaded_file)
         num_pages = len(pdf_reader.pages)
         
-        st.markdown(f"""
-        <div class="success-box">
-            <p>✅ <strong>{uploaded_file.name}</strong></p>
-            <p style="font-size: 0.85rem; color: var(--text-secondary); margin-top: 0.5rem;">📄 {num_pages} {'strana' if num_pages == 1 else 'strán' if num_pages < 5 else 'strán'}</p>
-        </div>
-        """, unsafe_allow_html=True)
+        st.success(f"✅ **{uploaded_file.name}**")
+        st.caption(f"📄 {num_pages} {'strana' if num_pages == 1 else 'strán'}")
 
         # Page selector
         if num_pages > 1:
@@ -297,11 +266,43 @@ with st.sidebar:
     </div>
     """, unsafe_allow_html=True)
 
-    signature_method = st.radio(
-        "",
-        ["✏️ Nakresli podpis", "💾 Načítaj uložený podpis", "📁 Nahraj obrázok"],
-        label_visibility="collapsed"
+    # Load saved signatures
+    saved_signatures = load_saved_signatures()
+    
+    if saved_signatures:
+        signature_names = [sig.stem for sig in saved_signatures]
+        selected_sig_name = st.selectbox(
+            "Uložené podpisy",
+            signature_names,
+            key="saved_sig_select"
+        )
+
+        if selected_sig_name:
+            selected_sig_path = next(sig for sig in saved_signatures if sig.stem == selected_sig_name)
+            sig_img = Image.open(selected_sig_path)
+            if sig_img.mode != 'RGBA':
+                sig_img = sig_img.convert('RGBA')
+            st.session_state.signature_image = sig_img
+            st.session_state.signature_created = True
+            st.image(sig_img, caption="Vybraný podpis", width=200)
+    else:
+        st.info("📁 Nahraj obrázok podpisu")
+    
+    # Upload signature option
+    uploaded_signature = st.file_uploader(
+        "Nahraj nový podpis (PNG)",
+        type=['png', 'jpg', 'jpeg'],
+        key="signature_upload"
     )
+
+    if uploaded_signature is not None:
+        sig_img = Image.open(uploaded_signature)
+        if sig_img.mode != 'RGBA':
+            sig_img = sig_img.convert('RGBA')
+        st.session_state.signature_image = sig_img
+        st.session_state.signature_created = True
+        st.success("✅ Podpis nahraný!")
+        st.image(sig_img, caption="Nahraný podpis", width=200)
     
     st.divider()
     
@@ -318,8 +319,7 @@ with st.sidebar:
         min_value=50,
         max_value=400,
         value=st.session_state.signature_width,
-        step=10,
-        help="Nastav veľkosť podpisu pred umiestnením"
+        step=10
     )
 
 # Main content
@@ -344,7 +344,7 @@ if not st.session_state.pdf_uploaded:
         st.markdown("""
         <div class="signature-card">
             <h3>✍️ Podpíš</h3>
-            <p style="color: var(--text-secondary);">Nakresli podpis alebo použi uložený</p>
+            <p style="color: var(--text-secondary);">Použi uložený podpis alebo nahraj nový</p>
         </div>
         """, unsafe_allow_html=True)
     
@@ -360,11 +360,7 @@ else:
     col1, col2 = st.columns([2, 1])
 
     with col1:
-        st.markdown("""
-        <div class="signature-card">
-            <h3>📄 Náhľad dokumentu</h3>
-        </div>
-        """, unsafe_allow_html=True)
+        st.subheader("📄 Náhľad dokumentu")
 
         # Convert PDF page to image
         pdf_bytes = st.session_state.pdf_file.getvalue()
@@ -374,7 +370,7 @@ else:
         page = pdf_document[st.session_state.current_page]
 
         # Render page to image
-        zoom = 1.5  # zoom factor for quality/performance balance
+        zoom = 1.5
         mat = fitz.Matrix(zoom, zoom)
         pix = page.get_pixmap(matrix=mat)
 
@@ -382,256 +378,136 @@ else:
         img_data = pix.tobytes("png")
         pdf_image = Image.open(io.BytesIO(img_data))
         
-        # Store original PDF dimensions for coordinate conversion
+        # Store dimensions
         pdf_page_width = float(page.rect.width)
         pdf_page_height = float(page.rect.height)
+        display_width = pdf_image.width
+        display_height = pdf_image.height
 
         pdf_document.close()
 
+        # Display PDF
+        st.image(pdf_image, use_container_width=True)
+        
         st.markdown("""
         <div class="info-box">
-            <p>💡 Klikni na miesto, kde chceš umiestniť podpis</p>
+            <p>💡 Použi slidery nižšie na umiestnenie podpisu</p>
         </div>
         """, unsafe_allow_html=True)
-
-        # Canvas for placing signature
-        canvas_result = st_canvas(
-            fill_color="rgba(0, 212, 170, 0.2)",
-            stroke_width=3,
-            stroke_color="#00d4aa",
-            background_image=pdf_image,
-            update_streamlit=True,
-            height=pdf_image.height,
-            width=pdf_image.width,
-            drawing_mode="point",
-            point_display_radius=8,
-            key="pdf_canvas",
-        )
-
-        # Store click position
-        if canvas_result.json_data is not None:
-            objects = canvas_result.json_data.get("objects", [])
-            if objects:
-                last_point = objects[-1]
-                st.session_state.signature_x = last_point["left"]
-                st.session_state.signature_y = last_point["top"]
-                
-                st.markdown(f"""
-                <div class="position-display">
-                    📍 Pozícia: X={int(st.session_state.signature_x)}, Y={int(st.session_state.signature_y)}
-                </div>
-                """, unsafe_allow_html=True)
 
     with col2:
-        st.markdown("""
-        <div class="signature-card">
-            <h3>✍️ Tvoj podpis</h3>
-        </div>
-        """, unsafe_allow_html=True)
-
-        if signature_method == "✏️ Nakresli podpis":
-            # Color picker for signature
-            st.session_state.signature_color = st.color_picker(
-                "Farba podpisu",
-                value=st.session_state.signature_color,
-                key="sig_color_picker"
+        st.subheader("📍 Pozícia podpisu")
+        
+        if st.session_state.signature_created:
+            # Show signature preview
+            st.image(st.session_state.signature_image, caption=f"Veľkosť: {st.session_state.signature_width}px", width=min(st.session_state.signature_width, 250))
+            
+            st.divider()
+            
+            # Position sliders (as percentage of page)
+            pos_x = st.slider(
+                "Horizontálna pozícia (%)",
+                min_value=0,
+                max_value=100,
+                value=50,
+                help="0% = ľavý okraj, 100% = pravý okraj"
             )
-
-            # Drawing canvas for signature
-            signature_canvas = st_canvas(
-                fill_color="rgba(255, 255, 255, 0)",
-                stroke_width=3,
-                stroke_color=st.session_state.signature_color,
-                background_color="#FFFFFF",
-                height=150,
-                width=350,
-                drawing_mode="freedraw",
-                key="signature_canvas",
+            
+            pos_y = st.slider(
+                "Vertikálna pozícia (%)",
+                min_value=0,
+                max_value=100,
+                value=80,
+                help="0% = horný okraj, 100% = dolný okraj"
             )
-
-            if signature_canvas.image_data is not None:
-                # Convert to PIL Image
-                sig_img = Image.fromarray(signature_canvas.image_data.astype('uint8'), 'RGBA')
-
-                # Crop to content
-                bbox = sig_img.getbbox()
-                if bbox:
-                    sig_img = sig_img.crop(bbox)
-                    st.session_state.signature_image = sig_img
-                    st.session_state.signature_created = True
-
-                    st.success("✅ Podpis pripravený")
-                    
-                    # Preview with current size
-                    aspect_ratio = sig_img.height / sig_img.width
-                    preview_width = min(st.session_state.signature_width, 300)
-                    st.image(sig_img, caption=f"Náhľad ({st.session_state.signature_width}px)", width=preview_width)
-
-                    # Save signature option
-                    with st.expander("💾 Uložiť podpis"):
-                        signature_name = st.text_input("Názov:", value="moj_podpis", key="sig_name")
-                        if st.button("Uložiť", use_container_width=True):
-                            save_signature(sig_img, signature_name)
-                            st.success(f"✅ Podpis '{signature_name}' uložený!")
-                            st.rerun()
-
-        elif signature_method == "💾 Načítaj uložený podpis":
-            saved_signatures = load_saved_signatures()
-
-            if saved_signatures:
-                signature_names = [sig.stem for sig in saved_signatures]
-                selected_sig_name = st.selectbox(
-                    "Vyber podpis",
-                    signature_names,
-                    key="saved_sig_select"
-                )
-
-                if selected_sig_name:
-                    selected_sig_path = next(sig for sig in saved_signatures if sig.stem == selected_sig_name)
-
-                    # Load and display
-                    sig_img = Image.open(selected_sig_path)
-                    if sig_img.mode != 'RGBA':
-                        sig_img = sig_img.convert('RGBA')
-
-                    st.session_state.signature_image = sig_img
-                    st.session_state.signature_created = True
-
-                    st.success("✅ Podpis načítaný")
-                    
-                    # Preview with current size
-                    preview_width = min(st.session_state.signature_width, 300)
-                    st.image(sig_img, caption=f"Náhľad ({st.session_state.signature_width}px)", width=preview_width)
-
-                    if st.button("🗑️ Zmazať tento podpis", type="secondary", use_container_width=True):
-                        selected_sig_path.unlink()
-                        st.success(f"Podpis '{selected_sig_name}' zmazaný")
-                        st.rerun()
-            else:
-                st.info("Zatiaľ nemáš žiadne uložené podpisy. Nakresli podpis a ulož ho!")
-
-        else:  # Upload image
-            uploaded_signature = st.file_uploader(
-                "Nahraj obrázok podpisu",
-                type=['png', 'jpg', 'jpeg'],
-                key="signature_upload"
-            )
-
-            if uploaded_signature is not None:
-                sig_img = Image.open(uploaded_signature)
-                if sig_img.mode != 'RGBA':
-                    sig_img = sig_img.convert('RGBA')
-
-                st.session_state.signature_image = sig_img
-                st.session_state.signature_created = True
-
-                st.success("✅ Podpis nahraný")
-                
-                preview_width = min(st.session_state.signature_width, 300)
-                st.image(sig_img, caption=f"Náhľad ({st.session_state.signature_width}px)", width=preview_width)
-
+            
         st.divider()
 
-        # Export section
-        st.markdown("""
-        <div class="signature-card">
-            <h3>📥 Export</h3>
-        </div>
-        """, unsafe_allow_html=True)
-
-        if st.session_state.signature_created and st.session_state.signature_x is not None:
             # Show what the filename will be
             original_filename = st.session_state.pdf_file.name
             signed_filename = get_signed_filename(original_filename)
             
-            st.markdown(f"""
-            <div class="position-display" style="font-size: 0.8rem; width: 100%; word-break: break-all;">
-                📄 {signed_filename}
-            </div>
-            """, unsafe_allow_html=True)
+            st.caption(f"📄 Výstupný súbor: **{signed_filename}**")
             
             if st.button("✍️ Vytvoriť podpísané PDF", type="primary", use_container_width=True):
                 try:
                     with st.spinner("Vytváram podpísané PDF..."):
-                        # Create signed PDF
-                        pdf_reader = PdfReader(io.BytesIO(st.session_state.pdf_file.getvalue()))
-                        pdf_writer = PdfWriter()
+                    # Create signed PDF
+                    pdf_reader = PdfReader(io.BytesIO(st.session_state.pdf_file.getvalue()))
+                    pdf_writer = PdfWriter()
 
-                        # Get the page to sign
-                        page = pdf_reader.pages[st.session_state.current_page]
-                        page_width = float(page.mediabox.width)
-                        page_height = float(page.mediabox.height)
+                    # Get the page to sign
+                    page = pdf_reader.pages[st.session_state.current_page]
+                    page_width = float(page.mediabox.width)
+                    page_height = float(page.mediabox.height)
 
-                        # Create signature overlay
-                        packet = io.BytesIO()
-                        can = canvas.Canvas(packet, pagesize=(page_width, page_height))
+                    # Create signature overlay
+                    packet = io.BytesIO()
+                    can = canvas.Canvas(packet, pagesize=(page_width, page_height))
 
-                        # Resize signature
-                        sig_img = st.session_state.signature_image
-                        aspect_ratio = sig_img.height / sig_img.width
-                        sig_width = st.session_state.signature_width
-                        sig_height = int(sig_width * aspect_ratio)
+                    # Resize signature
+                    sig_img = st.session_state.signature_image
+                    aspect_ratio = sig_img.height / sig_img.width
+                    sig_width = st.session_state.signature_width
+                    sig_height = int(sig_width * aspect_ratio)
 
-                        # Save signature as temp file
-                        with tempfile.NamedTemporaryFile(delete=False, suffix='.png') as tmp_sig:
-                            sig_img.save(tmp_sig.name, 'PNG')
+                    # Save signature as temp file
+                    with tempfile.NamedTemporaryFile(delete=False, suffix='.png') as tmp_sig:
+                        sig_img.save(tmp_sig.name, 'PNG')
 
-                            # Calculate position (adjust for PDF coordinates)
-                            # PDF coordinates start from bottom-left
-                            scale_x = page_width / pdf_image.width
-                            scale_y = page_height / pdf_image.height
+                            # Calculate position from percentage
+                            x = (pos_x / 100) * page_width - (sig_width / 2)
+                            y = page_height - ((pos_y / 100) * page_height) - (sig_height / 2)
+                            
+                            # Clamp to page bounds
+                            x = max(0, min(x, page_width - sig_width))
+                            y = max(0, min(y, page_height - sig_height))
 
-                            x = st.session_state.signature_x * scale_x
-                            y = page_height - (st.session_state.signature_y * scale_y)
+                        # Draw signature on canvas
+                        can.drawImage(
+                            tmp_sig.name,
+                                x, y,
+                            width=sig_width,
+                            height=sig_height,
+                            mask='auto'
+                        )
+                        can.save()
 
-                            # Draw signature on canvas
-                            can.drawImage(
-                                tmp_sig.name,
-                                x, y - sig_height,
-                                width=sig_width,
-                                height=sig_height,
-                                mask='auto'
-                            )
-                            can.save()
+                        # Clean up temp signature file
+                        Path(tmp_sig.name).unlink(missing_ok=True)
 
-                            # Clean up temp signature file
-                            Path(tmp_sig.name).unlink(missing_ok=True)
+                    # Merge signature with PDF
+                    packet.seek(0)
+                    signature_pdf = PdfReader(packet)
+                    page.merge_page(signature_pdf.pages[0])
 
-                        # Merge signature with PDF
-                        packet.seek(0)
-                        signature_pdf = PdfReader(packet)
-                        page.merge_page(signature_pdf.pages[0])
+                    # Add all pages to writer
+                    for i, p in enumerate(pdf_reader.pages):
+                        if i == st.session_state.current_page:
+                            pdf_writer.add_page(page)
+                        else:
+                            pdf_writer.add_page(p)
 
-                        # Add all pages to writer
-                        for i, p in enumerate(pdf_reader.pages):
-                            if i == st.session_state.current_page:
-                                pdf_writer.add_page(page)
-                            else:
-                                pdf_writer.add_page(p)
-
-                        # Save to bytes
-                        output = io.BytesIO()
-                        pdf_writer.write(output)
-                        output.seek(0)
+                    # Save to bytes
+                    output = io.BytesIO()
+                    pdf_writer.write(output)
+                    output.seek(0)
 
                         st.success("✅ PDF úspešne podpísané!")
-                        
-                        # Download button
-                        st.download_button(
+
+                    # Download button
+                    st.download_button(
                             label=f"⬇️ Stiahnuť {signed_filename}",
-                            data=output,
-                            file_name=signed_filename,
-                            mime="application/pdf",
-                            use_container_width=True
-                        )
+                        data=output,
+                        file_name=signed_filename,
+                        mime="application/pdf",
+                        use_container_width=True
+                    )
 
                 except Exception as e:
                     st.error(f"❌ Chyba: {str(e)}")
-
-        elif st.session_state.signature_created and st.session_state.signature_x is None:
-            st.warning("⚠️ Klikni na miesto v dokumente, kde chceš umiestniť podpis")
-        elif not st.session_state.signature_created:
-            st.warning("⚠️ Najprv vytvor alebo nahraj podpis")
+        else:
+            st.warning("⚠️ Najprv vyber alebo nahraj podpis v bočnom paneli")
 
 # Footer
 st.markdown("""
