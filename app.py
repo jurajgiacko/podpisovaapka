@@ -421,7 +421,7 @@ else:
                 help="0% = horný okraj, 100% = dolný okraj"
             )
             
-        st.divider()
+            st.divider()
 
             # Show what the filename will be
             original_filename = st.session_state.pdf_file.name
@@ -432,28 +432,28 @@ else:
             if st.button("✍️ Vytvoriť podpísané PDF", type="primary", use_container_width=True):
                 try:
                     with st.spinner("Vytváram podpísané PDF..."):
-                    # Create signed PDF
-                    pdf_reader = PdfReader(io.BytesIO(st.session_state.pdf_file.getvalue()))
-                    pdf_writer = PdfWriter()
+                        # Create signed PDF
+                        pdf_reader = PdfReader(io.BytesIO(st.session_state.pdf_file.getvalue()))
+                        pdf_writer = PdfWriter()
 
-                    # Get the page to sign
-                    page = pdf_reader.pages[st.session_state.current_page]
-                    page_width = float(page.mediabox.width)
-                    page_height = float(page.mediabox.height)
+                        # Get the page to sign
+                        page = pdf_reader.pages[st.session_state.current_page]
+                        page_width = float(page.mediabox.width)
+                        page_height = float(page.mediabox.height)
 
-                    # Create signature overlay
-                    packet = io.BytesIO()
-                    can = canvas.Canvas(packet, pagesize=(page_width, page_height))
+                        # Create signature overlay
+                        packet = io.BytesIO()
+                        can = canvas.Canvas(packet, pagesize=(page_width, page_height))
 
-                    # Resize signature
-                    sig_img = st.session_state.signature_image
-                    aspect_ratio = sig_img.height / sig_img.width
-                    sig_width = st.session_state.signature_width
-                    sig_height = int(sig_width * aspect_ratio)
+                        # Resize signature
+                        sig_img = st.session_state.signature_image
+                        aspect_ratio = sig_img.height / sig_img.width
+                        sig_width = st.session_state.signature_width
+                        sig_height = int(sig_width * aspect_ratio)
 
-                    # Save signature as temp file
-                    with tempfile.NamedTemporaryFile(delete=False, suffix='.png') as tmp_sig:
-                        sig_img.save(tmp_sig.name, 'PNG')
+                        # Save signature as temp file
+                        with tempfile.NamedTemporaryFile(delete=False, suffix='.png') as tmp_sig:
+                            sig_img.save(tmp_sig.name, 'PNG')
 
                             # Calculate position from percentage
                             x = (pos_x / 100) * page_width - (sig_width / 2)
@@ -463,46 +463,46 @@ else:
                             x = max(0, min(x, page_width - sig_width))
                             y = max(0, min(y, page_height - sig_height))
 
-                        # Draw signature on canvas
-                        can.drawImage(
-                            tmp_sig.name,
+                            # Draw signature on canvas
+                            can.drawImage(
+                                tmp_sig.name,
                                 x, y,
-                            width=sig_width,
-                            height=sig_height,
-                            mask='auto'
-                        )
-                        can.save()
+                                width=sig_width,
+                                height=sig_height,
+                                mask='auto'
+                            )
+                            can.save()
 
-                        # Clean up temp signature file
-                        Path(tmp_sig.name).unlink(missing_ok=True)
+                            # Clean up temp signature file
+                            Path(tmp_sig.name).unlink(missing_ok=True)
 
-                    # Merge signature with PDF
-                    packet.seek(0)
-                    signature_pdf = PdfReader(packet)
-                    page.merge_page(signature_pdf.pages[0])
+                        # Merge signature with PDF
+                        packet.seek(0)
+                        signature_pdf = PdfReader(packet)
+                        page.merge_page(signature_pdf.pages[0])
 
-                    # Add all pages to writer
-                    for i, p in enumerate(pdf_reader.pages):
-                        if i == st.session_state.current_page:
-                            pdf_writer.add_page(page)
-                        else:
-                            pdf_writer.add_page(p)
+                        # Add all pages to writer
+                        for i, p in enumerate(pdf_reader.pages):
+                            if i == st.session_state.current_page:
+                                pdf_writer.add_page(page)
+                            else:
+                                pdf_writer.add_page(p)
 
-                    # Save to bytes
-                    output = io.BytesIO()
-                    pdf_writer.write(output)
-                    output.seek(0)
+                        # Save to bytes
+                        output = io.BytesIO()
+                        pdf_writer.write(output)
+                        output.seek(0)
 
                         st.success("✅ PDF úspešne podpísané!")
 
-                    # Download button
-                    st.download_button(
+                        # Download button
+                        st.download_button(
                             label=f"⬇️ Stiahnuť {signed_filename}",
-                        data=output,
-                        file_name=signed_filename,
-                        mime="application/pdf",
-                        use_container_width=True
-                    )
+                            data=output,
+                            file_name=signed_filename,
+                            mime="application/pdf",
+                            use_container_width=True
+                        )
 
                 except Exception as e:
                     st.error(f"❌ Chyba: {str(e)}")
